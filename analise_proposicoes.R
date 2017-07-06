@@ -60,9 +60,8 @@ lista.proposicoes <- dados %>%
 #   n <- strsplit(i, ' |/')[[1]][2]
 #   a <- strsplit(i, ' |/')[[1]][3]
 #   
-#   # aux <- pega_proposicao(s, n, a)
+#   aux <- pega_proposicao(s, n, a)
 #   print(loop)
-#   aux <- pega_proposicao_situacao(s, n, a)
 #   if(is.null(prop.detalhe)) {
 #     prop.detalhe <- aux
 #   } else {
