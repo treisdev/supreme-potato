@@ -12,18 +12,24 @@ set.seed(seed)
 setwd('/Users/sauloguerra/Development/desafioleg/')
 prop.tram <- read.csv2('data/PROPOSICOES_E_TRAMITACOES.csv')
 
-View(prop.tram)
-# sum(is.na(prop.tram$DATA_TRAM)) # sem NA
-
-teste <- prop.tram %>% 
+#faz corte
+#detecta status REAL por tramitaçao, ignorando "falsos" arquivamentos
+teste <- prop.tram %>%
   mutate(DATA_TRAM = as.Date(DATA_TRAM, format="%d/%m/%Y"),
          CORTE = ifelse(DATA_TRAM <= as.Date('01/01/2016', format="%d/%m/%Y"), 1, 0)) %>% 
   group_by(NOM_PROPOSICAO) %>% 
-  mutate(TEVE_CORTE = length(unique(CORTE))) %>% 
+  distinct() %>% 
+  arrange(ORDEM_TRAM) %>% 
+  mutate(TEVE_CORTE = length(unique(CORTE)),
+         STATUS_REAL = ifelse(str_detect(DES_TRAM, '^Transformado n'), 'APROVADA', NA),
+         STATUS_REAL = ifelse((ARQUIVADA == 1) & (ORDEM_TRAM == last(ORDEM_TRAM[str_detect(DES_TRAM, '^Arquivad')])), 'ARQUIVADA', STATUS_REAL),
+         STATUS_REAL = ifelse(is.na(STATUS_REAL), 'TRAMITANDO', STATUS_REAL),
+         STATUS_REAL = ifelse(ORDEM_TRAM > last(ORDEM_TRAM[STATUS_REAL=='ARQUIVADA'|STATUS_REAL=='APROVADA']), 'DESCARTADO', STATUS_REAL)
+  ) %>% 
   ungroup() %>% 
   filter(TEVE_CORTE == 2)
 
-dim(prop.tram)
+
 
 # Cria dummies de comissoes
 comissoes <- prop.tram %>% 
