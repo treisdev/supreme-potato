@@ -1,0 +1,7 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+R/produced_data/teste.csv
+R/produced_data/train.csv
+R/data/PROPOSICOES_E_TRAMITACOES.csv
