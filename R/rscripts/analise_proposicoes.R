@@ -3,7 +3,7 @@ library(stringr)
 library(XML)
 library(httr)
 
-setwd('/Users/sauloguerra/Development/desafioleg/data/')
+#setwd('/Users/sauloguerra/Development/desafioleg/data/')
 
 # extrai node com hierarquia 1:1 e transforma em dataframe
 xml_df <-function(doc, path){
@@ -42,36 +42,40 @@ pega_proposicao <- function(sigla, numero, ano) {
 
 # extraçao: http://www.camara.gov.br/internet/arquivosDadosAbertos/proposicoes.csv
 # em: https://dadosabertos.camara.leg.br/swagger/api.html
-dados <- read.csv2('proposicoes.csv')
+dados <- read.csv2('http://www.camara.gov.br/internet/arquivosDadosAbertos/proposicoes.csv')
 
 lista.proposicoes <- dados %>% 
   select(NOM_PROPOSICAO, NOM_PARTIDO_POLITICO, DES_SITUACAO_PROPOSICAO, ANO_PROPOSICAO,
          NUM_PROPOSICAO, SIG_TIPO_PROPOSICAO, SIG_NORMA_JURIDICA, 
          DATAPRESENTACAOPROPOSICAO, DATTRANSFPROPOSICAOLEI, 
          SIG_UF, TEX_REGIAO_GEOGRAFICA_AUTOR, AREAS_TEMATICAS_APRESENTACAO, COD_SEXO) %>% 
-  filter(SIG_TIPO_PROPOSICAO %in% c('PEC','PLP','PL'), ANO_PROPOSICAO >= 2008) %>% # FILTRO INICIAL A PARTIR DE 2008
+  filter(SIG_TIPO_PROPOSICAO %in% c('PEC','PLP','PL'), ANO_PROPOSICAO >= 2003) %>% # FILTRO INICIAL A PARTIR DE 2008
   mutate(NOM_PROPOSICAO = paste0(SIG_TIPO_PROPOSICAO, ' ', NUM_PROPOSICAO, '/', ANO_PROPOSICAO)) # TEM PROPOSICAO COM O NOME QUEBRADO
 
 ### Captura os dados apenas uma vez
-# prop.detalhe <- NULL
-# loop <- 1
-# for(i in lista.proposicoes$NOM_PROPOSICAO) {
-#   s <- strsplit(i, ' |/')[[1]][1]  
-#   n <- strsplit(i, ' |/')[[1]][2]
-#   a <- strsplit(i, ' |/')[[1]][3]
-#   
-#   aux <- pega_proposicao(s, n, a)
-#   print(loop)
-#   if(is.null(prop.detalhe)) {
-#     prop.detalhe <- aux
-#   } else {
-#     prop.detalhe <- rbind(prop.detalhe, aux)
-#   }
-#   loop <- loop + 1
-# }
-# write.csv2(prop.detalhe, "TRAMITACOES.csv", row.names = FALSE)
+prop.detalhe <- NULL
+loop <- 1
+for(i in lista.proposicoes$NOM_PROPOSICAO) {
+  s <- strsplit(i, ' |/')[[1]][1]
+  n <- strsplit(i, ' |/')[[1]][2]
+  a <- strsplit(i, ' |/')[[1]][3]
+ 
+  Sys.sleep(0.2)
+  try(
+    aux <- pega_proposicao(s, n, a)  
+  )
+  
+  print(loop)
+  if(is.null(prop.detalhe)) {
+    prop.detalhe <- aux
+  } else {
+    prop.detalhe <- rbind(prop.detalhe, aux)
+  }
+  loop <- loop + 1
+}
+ write.csv2(prop.detalhe, "data/TRAMITACOES.csv", row.names = FALSE)
 
-tramitacoes <- read.csv2("TRAMITACOES.csv", stringsAsFactors = FALSE)
+tramitacoes <- read.csv2("data/TRAMITACOES.csv", stringsAsFactors = FALSE)
 tramitacoes <- tramitacoes %>% 
   mutate(NOM_PROPOSICAO = paste0(tipo, ' ', numero, '/', ano)) %>% 
   select(NOM_PROPOSICAO, COD_ORGAO = codOrgao, DES_ORGAO = orgao, 
@@ -85,5 +89,6 @@ prop.tram <- tramitacoes %>%
   mutate(VETO = ifelse(grepl('Vetado', ULTIMA_SITUACAO), 1, 0) ) %>% 
   mutate(TARGET = ifelse(APROVADA, 1, ifelse(ARQUIVADA | VETO, 0, NA)))
 # View(prop.tram)
+  
+write.csv2(prop.tram, 'data/PROPOSICOES_E_TRAMITACOES.csv', row.names = FALSE)
 
-write.csv2(prop.tram, 'PROPOSICOES_E_TRAMITACOES.csv', row.names = FALSE)

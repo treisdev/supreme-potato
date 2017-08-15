@@ -61,19 +61,22 @@ processa_dados <- function(dados_propostas, data, meses = 6){
     ungroup()
   
   # Comissões
-  dados_treino <- dados_treino %>% 
-    mutate(COMISSAO = word(DES_ORGAO)) %>% 
-    mutate(TIPO = ifelse(startsWith(COMISSAO, 'P'), 1, 0), #COMISSOES ESPECIAIS
-           TIPO = ifelse(COMISSAO == 'PLEN', 0, TIPO), 
-           TIPO = ifelse(COMISSAO %in% c('MPV00101', 'GTFICHA', 'GTTAXI', 'CPIPETRO'), 1, TIPO), #COMISSOES ESPECIAIS
-           COMISSAO = ifelse(TIPO == 1, 'ESPECIAL', COMISSAO)) #COMISSOES ESPECIAIS
-  dummies_comissao <- dados_treino %>% 
-    select(COMISSAO) 
-  one_comissao <- dummyVars('~ COMISSAO', data = dummies_comissao) 
-  dummies_comissao <- predict(one_comissao, newdata = dummies_comissao) %>% 
-    data.frame()
-  dados_treino <- bind_cols(dados_treino, dummies_comissao) %>% 
-    select(-COMISSAO)
+  dic_comissao_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+                                      word = paste0("comissao_", dic_comissoes$word),
+                                      stringsAsFactors = FALSE)
+  
+  comissao <- dados_treino %>% 
+    ungroup() %>%
+    select(NOM_PROPOSICAO, DES_ORGAO) %>% distinct()
+  comissao <- unnest_tokens(comissao, word, DES_ORGAO) %>% 
+    anti_join(stop_words)
+  comissao <- comissao %>% 
+    mutate(word = paste0("comissao_", word)) %>%
+    count(NOM_PROPOSICAO, word, sort = TRUE) %>% 
+    right_join(dic_comissao_df) %>% 
+    spread(key = word, value = n, fill = 0)
+  
+  dados_treino <- left_join(dados_treino, comissao)
   
   # Tipo de Proposição
   dummies_proposicao <- dummyVars('~ SIG_TIPO_PROPOSICAO', data = dados_treino)
@@ -82,18 +85,58 @@ processa_dados <- function(dados_propostas, data, meses = 6){
   dados_treino <- bind_cols(dados_treino, dummies_proposicao)
   
   # Temas
+  dic_area_tematica_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+                             word = paste0("tema_", dic_area_tematica$word),
+                             stringsAsFactors = FALSE)
+  
   area_tematica <- dados_treino %>% 
     ungroup() %>%
     select(NOM_PROPOSICAO, AREAS_TEMATICAS_APRESENTACAO) %>% distinct()
   area_tematica <- unnest_tokens(area_tematica, word, AREAS_TEMATICAS_APRESENTACAO) %>% 
     anti_join(stop_words)
   area_tematica <- area_tematica %>% 
+    mutate(word = paste0("tema_", word)) %>%
     count(NOM_PROPOSICAO, word, sort = TRUE) %>% 
     bind_tf_idf(word, NOM_PROPOSICAO, n) %>% 
     select(NOM_PROPOSICAO, word, tf_idf) %>% 
+    right_join(dic_area_tematica_df) %>% 
     spread(key = word, value = tf_idf, fill = 0)
   dados_treino <- left_join(dados_treino, area_tematica)
   
+  # bag of words para as tramitações
+  dados_tramitacoes <- dados_treino %>% 
+    select(NOM_PROPOSICAO, DES_TRAM) %>% 
+    unnest_tokens(word, DES_TRAM)
+  
+  dic_tram_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+                                     word = paste0("tram_", dic_tram$word),
+                                     stringsAsFactors = FALSE)
+    
+  dados_tramitacoes <- dados_tramitacoes %>%
+    mutate(word = paste0("tram_", word)) %>%
+    count(NOM_PROPOSICAO, word, sort = TRUE) %>% 
+    right_join(dic_tram_df) %>% 
+    spread(key = word, value = n, fill = 0)
+
+  dados_treino <- left_join(dados_treino, dados_tramitacoes)
+  
+  # Número de tramitações nos últimos 30 dias
+  tram_30_dias <- dados_treino %>% 
+    filter(DATA_TRAM >= data - 30  & DATA_TRAM <= data) %>%
+    group_by(NOM_PROPOSICAO) %>% 
+    summarise(n_tram_30d = n()) %>% 
+    ungroup()
+  
+  dados_treino <- left_join(dados_treino, tram_30_dias)
+  
+  # Número de tramitações nos últimos 30 dias
+  tram_90_dias <- dados_treino %>% 
+    filter(DATA_TRAM >= data - 90  & DATA_TRAM <= data) %>%
+    group_by(NOM_PROPOSICAO) %>% 
+    summarise(n_tram_90d = n()) %>% 
+    ungroup()
+  
+  dados_treino <- left_join(dados_treino, tram_90_dias)
   
   # Fim
   dados_treino <- dados_treino %>% 
@@ -103,12 +146,24 @@ processa_dados <- function(dados_propostas, data, meses = 6){
     filter(ORDEM_TRAM == max(ORDEM_TRAM)) %>% 
     mutate(id = 1:n()) %>% 
     filter(id == 1) %>% 
-    select(APROVOU, NOM_PROPOSICAO, 26:ncol(.), -TIPO) %>% 
+    select(APROVOU, NOM_PROPOSICAO, 26:ncol(.)) %>% 
     ungroup() %>% 
     distinct() %>% 
     mutate(data = data) %>% 
     select(APROVOU, NOM_PROPOSICAO, data,
-           everything(), -id)
+           everything(), -id) %>% 
+    data.frame()
   
-  dados_treino
+    y <- dados_treino %>% 
+      select(APROVOU, NOM_PROPOSICAO, data) %>% 
+      data.frame()
+    
+    x <- dados_treino %>% 
+      select(-APROVOU, -NOM_PROPOSICAO, -data) %>% 
+      data.frame() %>% 
+      replace(is.na(.), 0)
+  
+    x <- sparse.model.matrix(~ . -1, data = x)
+    
+    return(list(x = x, y = y))
 }
