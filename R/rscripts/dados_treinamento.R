@@ -91,6 +91,50 @@ dados_propostas <- dados_propostas %>%
          MAX_ORDEM_ARQUIVO = max(ORDEM_ARQUIVO, na.rm = TRUE)) %>% 
   ungroup()
 
+# Escreve sqlite ----------------------------------------------------------
+
+dados_area_tematica_relacional <- dados_propostas %>% 
+  # filter(DATA_TRAM <= as.Date("2015-12-31")) %>% 
+  select(NOM_PROPOSICAO, AREAS_TEMATICAS_APRESENTACAO) %>% 
+  mutate(tema = str_replace(AREAS_TEMATICAS_APRESENTACAO, ', ', '='),
+         tema = str_split(tema, ",")) %>% 
+  unnest(tema) %>%
+  mutate(tema = str_replace(tema, '=', ', ')) %>% 
+  distinct() %>% 
+  select(NOM_PROPOSICAO, tema)
+
+dados_comissoes_relacional <- dados_propostas %>% 
+  mutate(COMISSAO = word(DES_ORGAO)) %>% 
+  select(NOM_PROPOSICAO, COMISSAO, DES_ORGAO) %>% 
+  mutate(TIPO = ifelse(startsWith(COMISSAO, 'P'), 1, 0), #COMISSOES ESPECIAIS
+         TIPO = ifelse(COMISSAO == 'PLEN', 0, TIPO), 
+         TIPO = ifelse(COMISSAO %in% c('MPV00101', 'GTFICHA', 'GTTAXI', 'CPIPETRO'), 1, TIPO), #COMISSOES ESPECIAIS
+         COMISSAO = ifelse(TIPO == 1, 'ESPECIAL', COMISSAO)) %>% #COMISSOES ESPECIAIS
+  select(NOM_PROPOSICAO, COMISSAO) %>% 
+  distinct()
+
+base <- dados_propostas %>% 
+  select(NOM_PROPOSICAO, SIG_TIPO_PROPOSICAO, ANO_PROPOSICAO, NUM_PROPOSICAO, DATAPRESENTACAOPROPOSICAO) %>% 
+  distinct() %>% 
+  ### DADOS FAKE
+  mutate(chance = round(runif(n = n(), min = 0, max = 1),2),
+         qtd_tramitacoes = round(runif(n = n(), min = 1, max = 200)),
+         velocidade = round(runif(n = n(), min = 1, max = 50),1)) ### SUPRIMIR
+
+library(dbplyr)
+
+my_db_file <- "base.sqlite"
+my_db <- src_sqlite(my_db_file, create = TRUE)
+
+proposicao <- base
+proposicao_tema <- dados_area_tematica_relacional
+proposicao_comissao <- dados_comissoes_relacional
+copy_to(my_db, proposicao, temporary = FALSE)
+copy_to(my_db, dados_area_tematica_relacional, temporary = FALSE)
+copy_to(my_db, dados_comissoes_relacional, temporary = FALSE)
+
+
+
 # Dados Treinamento --------------------------------------------------------
 # Cria sequência de dados
 seq_datas <- seq(ymd('2014-01-01'),ymd('2016-01-01'), by = '1 month') - 1
