@@ -24,11 +24,12 @@ processa_dados <- function(dados_propostas, data, meses = 6){
     filter(DATA_TRAM <= data) %>% 
     group_by(NOM_PROPOSICAO) %>% 
     mutate(APROVADA = ifelse(grepl('^Transformado n', DES_TRAM), 1, 0),
-           ARQUIVADA = ifelse(grepl('^Arquivad', DES_TRAM), 1, 0),
+           ARQUIVADA = ifelse(grepl('^Arquiva|^ARQUIVA', DES_TRAM), 1, 0),
+           APENSADA = ifelse(grepl('Apens', DES_TRAM), 1, 0),
            DESARQUIVADA = ifelse(grepl('^Desarquivad', DES_TRAM), 1, 0),
            ARQUIVADA= ifelse(max(ARQUIVADA * ORDEM_TRAM) > max(DESARQUIVADA * ORDEM_TRAM),
                              1, 0),
-           STATUS_REAL = sum(APROVADA + ARQUIVADA, na.rm = TRUE)) %>% 
+           STATUS_REAL = sum(APROVADA + ARQUIVADA + APENSADA, na.rm = TRUE)) %>% 
     ungroup() %>% 
     filter(STATUS_REAL == 0) %>% 
     select(-STATUS_REAL, -APROVADA)
@@ -61,13 +62,13 @@ processa_dados <- function(dados_propostas, data, meses = 6){
     ungroup()
   
   # Comissões
-  dic_comissao_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+  dic_comissao_df <- expand.grid(NOM_PROPOSICAO = unique(dados_treino$NOM_PROPOSICAO),
                                       word = paste0("comissao_", dic_comissoes$word),
                                       stringsAsFactors = FALSE)
   
   comissao <- dados_treino %>% 
     ungroup() %>%
-    select(NOM_PROPOSICAO, DES_ORGAO) %>% distinct()
+    select(NOM_PROPOSICAO, DES_ORGAO) 
   comissao <- unnest_tokens(comissao, word, DES_ORGAO) %>% 
     anti_join(stop_words)
   comissao <- comissao %>% 
@@ -85,7 +86,7 @@ processa_dados <- function(dados_propostas, data, meses = 6){
   dados_treino <- bind_cols(dados_treino, dummies_proposicao)
   
   # Temas
-  dic_area_tematica_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+  dic_area_tematica_df <- expand.grid(NOM_PROPOSICAO = unique(dados_treino$NOM_PROPOSICAO),
                              word = paste0("tema_", dic_area_tematica$word),
                              stringsAsFactors = FALSE)
   
@@ -108,7 +109,7 @@ processa_dados <- function(dados_propostas, data, meses = 6){
     select(NOM_PROPOSICAO, DES_TRAM) %>% 
     unnest_tokens(word, DES_TRAM)
   
-  dic_tram_df <- expand.grid(NOM_PROPOSICAO = unique(dados_tramitacoes$NOM_PROPOSICAO),
+  dic_tram_df <- expand.grid(NOM_PROPOSICAO = unique(dados_treino$NOM_PROPOSICAO),
                                      word = paste0("tram_", dic_tram$word),
                                      stringsAsFactors = FALSE)
     

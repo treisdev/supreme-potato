@@ -93,18 +93,14 @@ dados_propostas <- dados_propostas %>%
 
 # Dados Treinamento --------------------------------------------------------
 # Cria sequência de dados
-seq_datas <- seq(ymd('2014-01-01'),ymd('2016-01-01'), by = '1 month') - 1
+seq_datas <- seq(ymd('2015-02-01'),ymd('2017-02-01'), by = '1 month') - 1
 dados <- lapply(seq_datas, processa_dados,
                 dados_propostas = dados_propostas)
 # Combina dados em um único data.frame
-nomes_var <- colnames(dados[[1]]$x)
-for(i in 2:length(dados)){
-  nomes_var <- intersect(nomes_var, colnames(dados[[i]]$x))
-}
-x_train <- dados[[1]]$x[,nomes_var]
+x_train <- dados[[1]]$x
 for(i in 2:length(dados)){
   x_train <- rbind(x_train,
-                   dados[[i]]$x[, nomes_var])
+                   dados[[i]]$x)
 }
 
 y_train <- dados[[1]]$y
@@ -114,61 +110,19 @@ for(i in 2:length(dados)){
 }
 rm(dados); gc();
 
-# Dados Teste
-seq_datas <- seq(ymd('2016-07-01'),ymd('2017-01-01'), by = '1 month') - 1
-dados_teste <- lapply(seq_datas, processa_dados,
-                      dados_propostas = dados_propostas)
-# Combina dados em um único data.frame
-nomes_var <- colnames(dados_teste[[1]]$x)
-for(i in 2:length(dados_teste)){
-  nomes_var <- intersect(nomes_var, colnames(dados_teste[[i]]$x))
-}
-x_test <- dados_teste[[1]]$x[,nomes_var]
-for(i in 2:length(dados_teste)){
-  x_test <- rbind(x_test,
-                   dados_teste[[i]]$x[, nomes_var])
-}
+y_train <- y_train %>% 
+  rename(TARGET = APROVOU)
 
-y_test <- dados_teste[[1]]$y
-for(i in 2:length(dados_teste)){
-  y_test <- rbind(y_test,
-                   dados_teste[[i]]$y)
-}
-rm(dados_teste); gc();
+# Dados que irão para o app
+data_final <- "2017-08-21"
+dados_final <- processa_dados(dados_propostas, data_final)
+y_final <- dados_final$y
+y_final <- y_final %>% 
+  rename(TARGET = APROVOU)
+x_final <- dados_final$x
 
-# Cria os folds
-# Separa as propostas entre aquelas aprovadas (em algum momento) e não aprovadas
-# Busca que os folds tenham uma proporção de 0 e 1 similar aos dados originais
-set.seed(8934843)
-propostas <- y_train %>%
-  group_by(NOM_PROPOSICAO) %>%
-  summarise(APROVOU = max(APROVOU)) %>% 
-  group_by(APROVOU) %>%
-  mutate(fold = sample(1:10, size = n(), replace = T)) %>% 
-  ungroup() %>% 
-  select(NOM_PROPOSICAO, fold)
-
-# Final para dados de treinamento
-y_train <- left_join(y_train, propostas) %>% 
-  rename(TARGET = APROVOU) 
-
-# Final para dados de teste
-y_test <- y_test %>% 
-  rename(TARGET = APROVOU) 
-
-# Colunas em comum (PRECISA TRABALHAR NISSO)
-colunas <- intersect(colnames(x_train), colnames(x_test))
-x_train <- x_train[,colunas]
-x_test <- x_test[,colunas]
+rm(dados_final); gc();
 
 # Escrever os objetos
-save(y_train, x_train, y_test, x_test,
-     file = 'produced_data/train_test2.RData')
-
-# --------------------------------------------------------
-# Escreve dados de treinamento
-#write.csv(dados[,c("fold", colunas)], 'produced_data/train.csv', row.names = FALSE)
-#saveRDS(dados[,c("fold", colunas)], 'produced_data/train.RDS')
-# Escreve dados de teste
-#write.csv(dados_teste[, colunas], 'produced_data/teste.csv', row.names = FALSE)
-#saveRDS(dados_teste[, colunas], 'produced_data/teste.RDS')
+save(y_train, x_train, y_final, x_final,
+     file = 'produced_data/final_train.RData')

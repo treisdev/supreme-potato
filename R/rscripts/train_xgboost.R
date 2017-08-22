@@ -11,13 +11,10 @@ library(rBayesianOptimization)
 
 load('produced_data/train_test.RData')
 
-
 # Folds -------------------------------------------------------------------
 
 index <- list()
 for(i in 1:10) index[[i]] <- which(y_train$fold != i)
-
-
 
 # Função para xgb ---------------------------------------------------------
 
@@ -28,25 +25,25 @@ xgb_fit_bayes <- function(max_depth, eta, nrounds, subsample, colsample_bytree){
     # Treino
     x_train_tmp <- as.matrix(x_train[index[[i]], ])
     y_train_tmp <- y_train[index[[i]], ] %>% 
-      select(TARGET) %>% 
-      mutate(TARGET = ifelse(TARGET == 1, "YES", "NO"),
-             TARGET = factor(TARGET, levels = c("NO", "YES")))
+      select(APROVOU) %>% 
+      mutate(APROVOU = ifelse(APROVOU == 1, "YES", "NO"),
+             APROVOU = factor(APROVOU, levels = c("NO", "YES")))
     row.names(y_train_tmp) <- NULL
     row.names(x_train_tmp) <- NULL
     x_train_tmp <- as.data.frame(cbind(y_train_tmp, x_train_tmp))
-    data_smote <- SMOTE(TARGET ~ ., data = x_train_tmp,
+    data_smote <- SMOTE(APROVOU ~ ., data = x_train_tmp,
                         perc.over = 2000, perc.under = 105)
-    table(data_smote$TARGET)
+    table(data_smote$APROVOU)
     rm(x_train_tmp); gc();
     
     dtrain <- xgb.DMatrix(data = data.matrix(data_smote[, -1]),
-                          label = as.numeric(data_smote[, "TARGET"]) - 1)
+                          label = as.numeric(data_smote[, "APROVOU"]) - 1)
     # Validação
     x_val <- x_train[-index[[i]], ]
     y_val <- y_train[-index[[i]], ] %>% 
-      mutate(TARGET = ifelse(TARGET == 1, "YES", "NO"),
-             TARGET = factor(TARGET, levels = c("NO", "YES"))) %>% 
-      .[["TARGET"]]
+      mutate(APROVOU = ifelse(APROVOU == 1, "YES", "NO"),
+             APROVOU = factor(APROVOU, levels = c("NO", "YES"))) %>% 
+      .[["APROVOU"]]
     dval <- xgb.DMatrix(data = data.matrix(x_val),
                         label = as.numeric(y_val) - 1)
     
@@ -95,34 +92,33 @@ ba_search <- BayesianOptimization(xgb_fit_bayes,
                                   eps = 0.0,
                                   verbose = TRUE)
 
-result <- xgb_fit_bayes(max_depth = 16, eta = 0.0338, nrounds = 2937,
+result <- xgb_fit_bayes(max_depth = 22, eta = 0.0393, nrounds = 2937,
               subsample = 0.3230, colsample_bytree = 0.3689)
 
 
 # Modelo Final ------------------------------------------------------------
 xgb_fit_final <- function(max_depth, eta, nrounds, subsample, colsample_bytree){
   
-  
     # Treino
     x_train_tmp <- as.matrix(x_train)
     y_train_tmp <- y_train %>% 
-      select(TARGET) %>% 
-      mutate(TARGET = ifelse(TARGET == 1, "YES", "NO"),
-             TARGET = factor(TARGET, levels = c("NO", "YES")))
+      select(APROVOU) %>% 
+      mutate(APROVOU = ifelse(APROVOU == 1, "YES", "NO"),
+             APROVOU = factor(APROVOU, levels = c("NO", "YES")))
     row.names(y_train_tmp) <- NULL
     row.names(x_train_tmp) <- NULL
     x_train_tmp <- as.data.frame(cbind(y_train_tmp, x_train_tmp))
-    data_smote <- SMOTE(TARGET ~ ., data = x_train_tmp,
+    data_smote <- SMOTE(APROVOU ~ ., data = x_train_tmp,
                         perc.over = 2000, perc.under = 105)
-    table(data_smote$TARGET)
+    table(data_smote$APROVOU)
     rm(x_train_tmp); gc();
     
     dtrain <- xgb.DMatrix(data = data.matrix(data_smote[, -1]),
-                          label = as.numeric(data_smote[, "TARGET"]) - 1)
+                          label = as.numeric(data_smote[, "APROVOU"]) - 1)
  
     # Parâmetros
     parametros <- list(
-      objective = "reg:logistic",
+      objective = "binary:logistic",
       max_depth = max_depth,
       eta = eta,
       colsample_bytree = colsample_bytree,
@@ -138,22 +134,32 @@ xgb_fit_final <- function(max_depth, eta, nrounds, subsample, colsample_bytree){
   
 }
 
-fit <- xgb_fit_final(max_depth = 37, eta = 0.01, nrounds = 6000,
-                     subsample = 0.2, colsample_bytree = 0.1)
+set.seed(334342)
+fit <- xgb_fit_final(max_depth = 22, eta = 0.0393, nrounds = 1965,
+                     subsample = 0.7631, colsample_bytree = 0.2593)
+dtest <- xgb.DMatrix(data = x_test)
+
+y_test$pred <- predict(fit, dtest)
+y_test %>% 
+  group_by(data) %>% 
+  summarise(precision = precision(APROVOU, pred, cutoff = 0.5),
+            recall = recall(APROVOU, pred, cutoff = 0.5),
+            f1score = f1Score(APROVOU, pred, cutoff = 0.5))
 
 results <- data.frame()
 for(i in as.character(unique(y_test$data))){
   print(i)
   x_test_tmp <- x_test[which(y_test$data == i),]
-  y_test_tmp <- y_test$TARGET[which(y_test$data == i)]
+  y_test_tmp <- y_test$APROVOU[which(y_test$data == i)]
   dtest <- xgb.DMatrix(data = x_test_tmp)
   pred <- predict(fit, dtest)
   results_tmp <- data.frame(date = i,
-                            precision = precision(y_test_tmp, pred),
-                            recall = recall(y_test_tmp, pred),
+                            precision = ModelMetrics::precision(y_test_tmp, pred),
+                            recall = ModelMetrics::recall(y_test_tmp, pred),
                             f1score = f1Score(y_test_tmp, pred))
   results <- bind_rows(results, results_tmp)
   rm(results_tmp)
 }
 
 results
+    
